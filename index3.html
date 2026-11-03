@@ -1,0 +1,1223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b1020">
+<title>myLUAS</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<style>
+  :root {
+    --bg: #0b1020;
+    --card: #141b30;
+    --card-2: #1b2440;
+    --card-3: #232e52;
+    --text: #f2f4fa;
+    --muted: #9aa3bd;
+    --red: #e4002b;
+    --green: #00a651;
+    --accent: var(--red);
+    --due: #ffd23f;
+    --board: #ffd23f;
+    --target: #ff2340;
+    --ok: #5be39b;
+    --no: #ff8a9a;
+    --error-bg: #3a1220;
+    --error-text: #ffb3c1;
+    --warn-bg: #3a2f10;
+    --warn-text: #ffe39a;
+    --radius: 18px;
+  }
+  * { box-sizing: border-box; }
+  html { overflow-x: hidden; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    line-height: 1.4;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ---------- Layout ---------- */
+  .layout { flex: 1; width: 100%; }
+  main {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 20px 16px 24px;
+  }
+  .map-panel {
+    width: 100%;
+    max-width: 560px;
+    margin: 0 auto;
+    padding: 0 16px 24px;
+  }
+  /* Desktop: 5% | 50% info | 5% gap | 35% map | 5% */
+  @media (min-width: 900px) {
+    .layout {
+      display: grid;
+      grid-template-columns: 50fr 35fr;
+      column-gap: 5.5556%;   /* 5% of the full page width */
+      padding: 0 5%;
+      align-items: start;
+    }
+    main { max-width: none; margin: 0; padding: 32px 0; }
+    .map-panel {
+      max-width: none;
+      margin: 0;
+      padding: 24px 0;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .map-panel .map-wrap { flex: 1; height: auto; min-height: 300px; }
+    .logo { font-size: 2.3rem; }
+  }
+  @media (min-width: 1200px) {
+    #directions { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+    #directions .direction { margin-bottom: 0; }
+  }
+
+  /* ---------- Header ---------- */
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+  .logo { font-size: 1.9rem; font-weight: 800; letter-spacing: -0.5px; margin: 0; }
+  .logo span { color: var(--accent); transition: color .3s; }
+  .live { display: flex; align-items: center; gap: 8px; font-size: .85rem; color: var(--muted); }
+  .dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--green);
+    animation: pulse 2s infinite;
+  }
+  .dot.off { background: var(--muted); animation: none; }
+  @keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(0,166,81,.6); }
+    70% { box-shadow: 0 0 0 10px rgba(0,166,81,0); }
+    100% { box-shadow: 0 0 0 0 rgba(0,166,81,0); }
+  }
+
+  /* ---------- Pickers ---------- */
+  .pickers { display: grid; gap: 12px; }
+  label.picker-label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: .8rem; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--muted); margin-bottom: 6px;
+  }
+  .swatch { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .swatch.board { background: var(--board); }
+  .swatch.target { background: var(--target); }
+  .picker-row { display: flex; gap: 10px; }
+  select {
+    flex: 1; min-width: 0; width: 100%;
+    appearance: none; -webkit-appearance: none;
+    background: var(--card) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' stroke='%239aa3bd' stroke-width='2' fill='none'/%3E%3C/svg%3E") no-repeat right 16px center;
+    color: var(--text);
+    border: 2px solid var(--card-2);
+    border-left: 6px solid var(--accent);
+    border-radius: 14px;
+    padding: 14px 44px 14px 14px;
+    font-size: 1.1rem; font-weight: 600;
+    transition: border-color .3s;
+  }
+  select#toSelect { border-left-color: var(--target); }
+  select:focus { outline: none; border-color: var(--accent); }
+  button.refresh {
+    background: var(--card); color: var(--text);
+    border: 2px solid var(--card-2); border-radius: 14px;
+    width: 54px; font-size: 1.4rem; cursor: pointer;
+  }
+  button.refresh:active { transform: scale(.95); }
+  button.refresh.spin span { display: inline-block; animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ---------- Stop title + message ---------- */
+  .stop-title { margin: 22px 0 4px; font-size: 1.5rem; font-weight: 800; }
+  .line-badge {
+    display: inline-block; font-size: .75rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 1px;
+    padding: 3px 10px; border-radius: 999px;
+    background: var(--accent); color: #fff;
+    vertical-align: middle; margin-left: 8px;
+  }
+  .message {
+    background: var(--card); border-radius: 14px;
+    padding: 12px 14px; margin: 12px 0 18px;
+    font-size: .95rem; color: var(--muted);
+    border-left: 4px solid var(--due);
+  }
+  .message strong { color: var(--text); display: block; font-size: .75rem; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 2px; }
+
+  .error, .warn { border-radius: 14px; padding: 12px 14px; margin: 14px 0; font-size: .95rem; display: none; }
+  .error { background: var(--error-bg); color: var(--error-text); }
+  .warn { background: var(--warn-bg); color: var(--warn-text); }
+  .error.show, .warn.show { display: block; }
+  .error strong, .warn strong { display: block; margin-bottom: 2px; }
+
+  .hint { color: var(--muted); font-size: .85rem; margin: 0 0 10px; }
+
+  /* ---------- Directions + trams ---------- */
+  .direction { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .direction h2 { margin: 0 0 10px; font-size: .85rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
+  .tram {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    background: var(--card-2); border-radius: 12px;
+    padding: 12px 14px; margin-top: 8px;
+    border: 2px solid transparent;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+    user-select: none;
+  }
+  .tram:first-of-type { margin-top: 0; }
+  .tram:hover { border-color: rgba(255,255,255,.14); }
+  .tram:focus-visible { outline: none; border-color: var(--text); }
+  .tram.selected { border-color: var(--accent); background: var(--card-3); }
+  .tram .info { min-width: 0; }
+  .dest { font-size: 1.1rem; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sub { font-size: .78rem; color: var(--muted); margin-top: 2px; }
+  .sub.ok { color: var(--ok); }
+  .sub.no { color: var(--no); }
+  .mins { flex-shrink: 0; text-align: right; font-variant-numeric: tabular-nums; line-height: 1; }
+  .mins .num { font-size: 2.4rem; font-weight: 800; }
+  .mins .unit { font-size: .85rem; color: var(--muted); margin-left: 3px; }
+  .mins.due .num { color: var(--due); font-size: 1.9rem; }
+  .tram.first .mins .num { color: var(--accent); }
+  .tram.first .mins.due .num { color: var(--due); }
+  .empty { color: var(--muted); font-size: .95rem; padding: 6px 2px; }
+
+  .updated { text-align: center; color: var(--muted); font-size: .85rem; margin-top: 16px; }
+  .loading { color: var(--muted); text-align: center; padding: 30px 0; }
+
+  /* ---------- Map panel ---------- */
+  .map-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+  .map-title { margin: 0; font-size: 1.15rem; font-weight: 800; }
+  .map-note { color: var(--muted); font-size: .8rem; }
+  .map-tools { display: flex; gap: 8px; }
+  .map-tools button {
+    background: var(--card); color: var(--text);
+    border: 2px solid var(--card-2); border-radius: 12px;
+    height: 40px; padding: 0 12px; font-size: .85rem; font-weight: 600; cursor: pointer;
+  }
+  .map-tools button:hover { border-color: var(--accent); }
+
+  .trip {
+    background: var(--card); border-radius: 14px;
+    padding: 12px 14px; margin-bottom: 10px;
+    font-size: .92rem; border-left: 4px solid var(--accent);
+  }
+  .trip .top { display: flex; align-items: center; gap: 8px; font-size: 1rem; margin-bottom: 4px; }
+  .trip .top b { font-size: 1.05rem; }
+  .trip .muted { color: var(--muted); }
+  .trip .row { margin-top: 3px; }
+  .trip .est { font-size: .7rem; text-transform: uppercase; letter-spacing: .8px; color: var(--muted); border: 1px solid var(--card-3); border-radius: 999px; padding: 1px 6px; margin-left: 4px; }
+  .trip .board-name { color: var(--board); }
+  .trip .target-name { color: var(--target); }
+  .trip .warn-line { color: var(--warn-text); margin-top: 6px; font-size: .85rem; }
+
+  .map-wrap {
+    position: relative;
+    height: 60vh; min-height: 340px;
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--card);
+  }
+  #map { position: absolute; inset: 0; }
+  .map-error {
+    position: absolute; left: 12px; right: 12px; top: 12px; z-index: 1000;
+    background: var(--error-bg); color: var(--error-text);
+    border-radius: 12px; padding: 10px 12px; font-size: .9rem;
+    display: none;
+  }
+  .map-error.show { display: block; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: .78rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .lg-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .lg-line { width: 22px; height: 4px; border-radius: 2px; display: inline-block; background: var(--accent); }
+  .lg-dash { width: 22px; height: 0; border-top: 4px dotted var(--accent); display: inline-block; }
+  .lg-fade { width: 22px; height: 4px; border-radius: 2px; display: inline-block; background: var(--accent); opacity: .3; }
+
+  /* ---------- Leaflet dark theme ---------- */
+  .leaflet-container { background: #e8eaee; font: inherit; }
+  /* Greys out the street map so roads don't compete with the red and green Luas lines.
+     Only affects the background map, not routes, stops or trams. */
+  .leaflet-tile-pane { filter: grayscale(1) brightness(1.04) contrast(.88); }
+  .leaflet-bar a, .leaflet-bar a:hover { background: var(--card); color: var(--text); border-bottom-color: var(--card-2); }
+  .leaflet-bar { border: 2px solid var(--card-2) !important; }
+  .leaflet-control-attribution { background: rgba(11,16,32,.75) !important; color: var(--muted) !important; }
+  .leaflet-control-attribution a { color: #c9d0e6 !important; }
+  .leaflet-tooltip.stop-tip {
+    background: var(--card); color: var(--text);
+    border: 1px solid var(--card-3); border-radius: 8px;
+    font-weight: 600; box-shadow: 0 4px 14px rgba(0,0,0,.4);
+  }
+  .leaflet-tooltip.stop-tip::before { border-top-color: var(--card); }
+
+  .luas-pop .leaflet-popup-content-wrapper, .luas-pop .leaflet-popup-tip {
+    background: var(--card); color: var(--text);
+    box-shadow: 0 8px 30px rgba(0,0,0,.5);
+  }
+  .luas-pop .leaflet-popup-content-wrapper { border-radius: 14px; }
+  .luas-pop .leaflet-popup-content { margin: 14px 16px; }
+  .luas-pop a.leaflet-popup-close-button { color: var(--muted); }
+  .pop-title { font-weight: 800; font-size: 1.05rem; }
+  .pop-badge { font-size: .65rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; padding: 2px 8px; border-radius: 999px; color: #fff; margin-left: 6px; vertical-align: middle; }
+  .pop-badge.red { background: var(--red); }
+  .pop-badge.green { background: var(--green); }
+  .pop-sub { color: var(--muted); font-size: .8rem; margin-top: 2px; }
+  .pop-note { color: var(--warn-text); font-size: .8rem; margin-top: 6px; }
+  .pop-msg { color: var(--muted); font-size: .8rem; margin-top: 6px; }
+  .pop-live { margin-top: 8px; font-size: .88rem; color: var(--muted); }
+  .pop-dir { margin-top: 8px; }
+  .pop-dir-name { font-size: .7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 2px; }
+  .pop-row { display: flex; justify-content: space-between; gap: 10px; color: var(--text); padding: 2px 0; }
+  .pop-row b { font-variant-numeric: tabular-nums; }
+  .pop-err { color: var(--error-text); }
+  .pop-actions { display: flex; gap: 8px; margin-top: 12px; }
+  .pop-btn {
+    flex: 1; border: none; border-radius: 10px; padding: 9px 8px;
+    font-weight: 700; font-size: .85rem; cursor: pointer;
+  }
+  .pop-btn.board { background: var(--board); color: #1a1400; }
+  .pop-btn.target { background: var(--target); color: #fff; }
+  .pop-btn:disabled { opacity: .4; cursor: default; }
+
+  .lbl-wrap { background: none; border: none; }
+  .stop-label {
+    display: inline-block; white-space: nowrap;
+    background: rgba(11,16,32,.92); color: #fff;
+    padding: 3px 8px; border-radius: 8px;
+    font-weight: 700; font-size: 12px;
+    border: 1px solid var(--card-3);
+    box-shadow: 0 2px 8px rgba(0,0,0,.4);
+  }
+  .stop-label.board { border-color: var(--board); }
+  .stop-label.board em { color: var(--board); font-style: normal; }
+  .stop-label.target { border-color: var(--target); }
+  .stop-label.target em { color: var(--target); font-style: normal; }
+
+  .pulse-ring {
+    width: 44px; height: 44px; border-radius: 50%;
+    border: 3px solid var(--target);
+    animation: ring 1.6s ease-out infinite;
+  }
+  @keyframes ring {
+    0% { transform: scale(.35); opacity: 1; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+
+  .tram-icon { background: none; border: none; }
+  .tram-pin {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: var(--c); border: 3px solid #fff;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 2px 8px rgba(0,0,0,.5);
+    position: relative; cursor: pointer;
+    transition: transform .2s, opacity .2s;
+  }
+  .tram-pin svg { width: 16px; height: 16px; fill: #fff; }
+  .tram-pin .tag {
+    position: absolute; top: -10px; left: 20px;
+    background: #0b1020; color: #fff;
+    font-size: 10px; font-weight: 800; white-space: nowrap;
+    padding: 1px 6px; border-radius: 999px; border: 1px solid var(--c);
+  }
+  .tram-pin.sel { transform: scale(1.35); box-shadow: 0 0 0 6px rgba(255,255,255,.18), 0 0 18px var(--c); }
+  .tram-pin.dim { opacity: .55; }
+
+  footer {
+    text-align: center; color: var(--muted); font-size: .8rem;
+    padding: 18px 16px 28px; border-top: 1px solid var(--card-2);
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+  <main>
+    <header>
+      <h1 class="logo">my<span>LUAS</span></h1>
+      <div class="live"><div class="dot" id="liveDot"></div><span id="liveText">Live</span></div>
+    </header>
+
+    <div class="pickers">
+      <div>
+        <label class="picker-label" for="stopSelect"><i class="swatch board"></i>From, your boarding stop</label>
+        <div class="picker-row">
+          <select id="stopSelect" aria-label="Choose your boarding stop"><option>Loading stops…</option></select>
+          <button class="refresh" id="refreshBtn" aria-label="Refresh now" title="Refresh now"><span>↻</span></button>
+        </div>
+      </div>
+      <div>
+        <label class="picker-label" for="toSelect"><i class="swatch target"></i>To, where you're going</label>
+        <select id="toSelect" aria-label="Choose where you're going"><option value="">Anywhere (end of the line)</option></select>
+      </div>
+    </div>
+
+    <div class="error" id="errorBox" role="alert"></div>
+    <div class="warn" id="warnBox" role="status"></div>
+
+    <div id="stopTitle"></div>
+    <div id="messageBox"></div>
+    <p class="hint">Tap any tram to track it on the map.</p>
+    <div id="directions"><div class="loading">Loading trams…</div></div>
+    <div class="updated" id="updated"></div>
+  </main>
+
+  <aside class="map-panel" id="mapPanel">
+    <div class="map-head">
+      <div>
+        <h2 class="map-title">Live map</h2>
+        <div class="map-note">Tram positions are estimated from arrival times</div>
+      </div>
+      <div class="map-tools">
+        <button id="fitBtn" title="Zoom to the route">Fit route</button>
+        <button id="locBtn" title="Find my nearest stop">Near me</button>
+      </div>
+    </div>
+    <div class="trip" id="tripCard">Tap any tram to track it on the map.</div>
+    <div class="map-wrap">
+      <div id="map" role="application" aria-label="Luas map"></div>
+      <div class="map-error" id="mapError"></div>
+    </div>
+    <div class="legend">
+      <span><i class="lg-dot" style="background:var(--board)"></i>Boarding</span>
+      <span><i class="lg-dot" style="background:var(--target)"></i>Your stop</span>
+      <span><i class="lg-line"></i>Your trip</span>
+      <span><i class="lg-dash"></i>Tram approaching</span>
+      <span><i class="lg-fade"></i>Rest of route</span>
+    </div>
+  </aside>
+</div>
+
+<footer>Data: Transport Infrastructure Ireland. Built by Jayden for BDAIB.</footer>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  "use strict";
+
+  // ================= Settings =================
+  const API = "https://luas-class.kluxy.app";
+  const KEY_FROM = "myluas.stop";
+  const KEY_TO = "myluas.to";
+  const DEFAULT_STOP = "MYS";
+  const REFRESH_MS = 20000;
+  const TICK_MS = 2000;          // how often trams glide on the map
+  const DWELL_MIN = 0.45;        // average minutes a tram waits at each stop
+  const SPEED_KMH = 24;          // average running speed between stops
+  const COLORS = { red: "#e4002b", green: "#00a651", target: "#ff2340", board: "#ffd23f" };
+  const TRAM_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2c-4 0-7 .5-7 4v9.5A3.5 3.5 0 0 0 8.5 19L7 20.5v.5h2l2-2h2l2 2h2v-.5L15.5 19a3.5 3.5 0 0 0 3.5-3.5V6c0-3.5-3-4-7-4zM7.5 17a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zm9 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3zM17 11H7V6h10v5z"/></svg>';
+
+  // Line layouts, listed in the Outbound direction (Red towards Tallaght/Saggart, Green towards Brides Glen)
+  const RED_POINT = ["TPT", "SDK", "MYS", "GDK"];
+  const RED_CON = ["CON"];
+  const RED_TRUNK = ["BUS", "ABB", "JER", "FOU", "SMI", "MUS", "HEU", "JAM", "FAT", "RIA", "SUI", "GOL", "DRI", "BLA", "BLU", "KYL", "RED", "KIN", "BEL"];
+  const RED_TAL = ["COO", "HOS", "TAL"];
+  const RED_SAG = ["FET", "CVN", "CIT", "FOR", "SAG"];
+  const GREEN_SOUTH_CORE = ["STS", "HAR", "CHA", "RAN", "BEE", "COW", "MIL", "WIN", "DUN", "BAL", "KIL", "STI", "SAN", "CPK", "GLE", "GAL", "LEO", "BAW", "RCC", "CCK", "BRE", "LAU", "CHE", "BRI"];
+  const GREEN_NORTH_END = ["BRO", "CAB", "PHI", "GRA", "BRD", "DOM"];
+  // City centre is one-way: southbound via O'Connell and Westmoreland, northbound via Trinity, Marlborough and Parnell
+  const GREEN_SOUTH = [...GREEN_NORTH_END, "OUP", "OGP", "WES", "DAW", ...GREEN_SOUTH_CORE];
+  const GREEN_NORTH = [...GREEN_SOUTH_CORE.slice().reverse(), "DAW", "TRY", "MAR", "PAR", ...GREEN_NORTH_END.slice().reverse()];
+
+  // ================= Elements + state =================
+  const $ = id => document.getElementById(id);
+  const els = {
+    fromSel: $("stopSelect"), toSel: $("toSelect"), refresh: $("refreshBtn"),
+    error: $("errorBox"), warn: $("warnBox"), title: $("stopTitle"), message: $("messageBox"),
+    directions: $("directions"), updated: $("updated"), dot: $("liveDot"), liveText: $("liveText"),
+    trip: $("tripCard"), mapErr: $("mapError"), fitBtn: $("fitBtn"), locBtn: $("locBtn"), mapPanel: $("mapPanel")
+  };
+
+  let stops = [], byId = {}, paths = [];
+  let fromId = DEFAULT_STOP, toId = "";
+  let fc = null;               // { data, fetchedAt, boardId }
+  let trams = [];
+  let selected = null, selKey = null;
+  let timer = null, reqId = 0, fitPending = true;
+  let map = null, layers = {}, stopMarkers = {}, tramMarkers = {}, approachLine = null, lastFocus = null;
+  const popCache = {};
+
+  // ================= Helpers =================
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  }
+  function el(tag, className, text) {
+    const n = document.createElement(tag);
+    if (className) n.className = className;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+  function store(key, val) { try { localStorage.setItem(key, val); } catch (e) { /* private mode */ } }
+  function load(key, fallback) { try { const v = localStorage.getItem(key); return v === null ? fallback : v; } catch (e) { return fallback; } }
+  const norm = s => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+  const stopName = id => (byId[id] ? byId[id].name : id);
+  const isMobile = () => window.matchMedia("(max-width: 899px)").matches;
+
+  async function getJSON(url) {
+    let res;
+    try { res = await fetch(url, { cache: "no-store" }); }
+    catch (e) { throw new Error("Could not reach the server. Check your connection. (" + e.message + ")"); }
+    if (!res.ok) throw new Error("Server replied " + res.status + " " + (res.statusText || "") + " for " + url);
+    try { return await res.json(); }
+    catch (e) { throw new Error("The server sent data that is not valid JSON."); }
+  }
+
+  function showError(title, detail) {
+    els.error.innerHTML = "";
+    els.error.appendChild(el("strong", null, title));
+    els.error.appendChild(el("span", null, detail));
+    els.error.classList.add("show");
+    els.dot.classList.add("off");
+    els.liveText.textContent = "Offline";
+  }
+  function clearError() {
+    els.error.classList.remove("show");
+    els.error.innerHTML = "";
+    els.dot.classList.remove("off");
+    els.liveText.textContent = "Live";
+  }
+  function showWarn(title, detail) {
+    els.warn.innerHTML = "";
+    els.warn.appendChild(el("strong", null, title));
+    els.warn.appendChild(el("span", null, detail));
+    els.warn.classList.add("show");
+  }
+  function clearWarn() { els.warn.classList.remove("show"); els.warn.innerHTML = ""; }
+
+  let mapErrTimer = null;
+  function showMapError(msg, transient) {
+    els.mapErr.textContent = msg;
+    els.mapErr.classList.add("show");
+    clearTimeout(mapErrTimer);
+    if (transient) mapErrTimer = setTimeout(() => els.mapErr.classList.remove("show"), 6000);
+  }
+
+  function setAccent(line) {
+    document.documentElement.style.setProperty("--accent", line === "green" ? "var(--green)" : "var(--red)");
+  }
+
+  // ================= Geometry + timing =================
+  function hav(a, b) {
+    const R = 6371, r = x => x * Math.PI / 180;
+    const dLat = r(b.lat - a.lat), dLng = r(b.lng - a.lng);
+    const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2;
+    return 2 * R * Math.asin(Math.sqrt(h));
+  }
+  function segMin(a, b) { return DWELL_MIN + hav(byId[a], byId[b]) / SPEED_KMH * 60; }
+
+  function buildPaths() {
+    const keep = arr => arr.filter(id => byId[id]);
+    const out = [];
+    const addPair = (line, outboundIds) => {
+      const ids = keep(outboundIds);
+      if (ids.length < 2) return;
+      out.push({ line, dir: "Outbound", ids });
+      out.push({ line, dir: "Inbound", ids: ids.slice().reverse() });
+    };
+    addPair("red", [...RED_POINT, ...RED_TRUNK, ...RED_TAL]);
+    addPair("red", [...RED_POINT, ...RED_TRUNK, ...RED_SAG]);
+    addPair("red", [...RED_CON, ...RED_TRUNK, ...RED_TAL]);
+    addPair("red", [...RED_CON, ...RED_TRUNK, ...RED_SAG]);
+    const gs = keep(GREEN_SOUTH), gn = keep(GREEN_NORTH);
+    if (gs.length > 1) out.push({ line: "green", dir: "Outbound", ids: gs });
+    if (gn.length > 1) out.push({ line: "green", dir: "Inbound", ids: gn });
+    out.forEach(p => {
+      p.cum = [0];
+      for (let i = 1; i < p.ids.length; i++) p.cum.push(p.cum[i - 1] + segMin(p.ids[i - 1], p.ids[i]));
+    });
+    paths = out;
+  }
+
+  function findStopByName(name, line) {
+    const n = norm(name);
+    if (!n) return null;
+    const pool = stops.filter(s => !line || s.line === line);
+    const m = pool.find(s => norm(s.name) === n)
+      || pool.find(s => norm(s.name).startsWith(n) || n.startsWith(norm(s.name)))
+      || pool.find(s => norm(s.name).includes(n) || n.includes(norm(s.name)));
+    return m ? m.id : null;
+  }
+
+  // Work out which way a tram is running and the route it follows
+  function resolveTramPath(boardId, dirName, destName) {
+    const st = byId[boardId];
+    if (!st) return null;
+    const destId = findStopByName(destName, st.line);
+    const cands = paths.filter(p => p.line === st.line && p.ids.includes(boardId));
+    const byDir = cands.filter(p => p.dir.toLowerCase() === String(dirName || "").toLowerCase());
+    let pool = byDir.length ? byDir : cands;
+    const reachesDest = p => { const b = p.ids.indexOf(boardId), d = p.ids.indexOf(destId); return d >= 0 && d >= b; };
+    if (destId) {
+      const ok = pool.filter(reachesDest);
+      if (ok.length) pool = ok;
+      else { const ok2 = cands.filter(reachesDest); if (ok2.length) pool = ok2; }
+    }
+    const p = pool[0];
+    if (!p) return null;
+    const b = p.ids.indexOf(boardId);
+    let d = destId ? p.ids.indexOf(destId) : -1;
+    if (d < b) d = p.ids.length - 1;
+    return { path: p, b, d, destId };
+  }
+
+  // f is a fractional stop index along the path, so 2.5 means halfway between stop 2 and stop 3
+  function estimatePos(p, b, due) {
+    const target = p.cum[b] - due;
+    if (target <= 0) return { f: 0, atStart: due > 0.05 && b > 0 };
+    let i = 0;
+    while (i < b - 1 && p.cum[i + 1] < target) i++;
+    const seg = p.cum[i + 1] - p.cum[i];
+    const frac = seg > 0 ? (target - p.cum[i]) / seg : 1;
+    return { f: Math.min(b, i + Math.max(0, Math.min(1, frac))), atStart: false };
+  }
+  function pointAt(p, f) {
+    const i = Math.max(0, Math.floor(f)), j = Math.min(p.ids.length - 1, Math.ceil(f));
+    const a = byId[p.ids[i]], c = byId[p.ids[j]], t = f - i;
+    return [a.lat + (c.lat - a.lat) * t, a.lng + (c.lng - a.lng) * t];
+  }
+  function coordsBetween(p, f0, f1) {
+    if (f1 < f0) { const x = f0; f0 = f1; f1 = x; }
+    const pts = [pointAt(p, f0)];
+    for (let k = Math.floor(f0) + 1; k < f1; k++) pts.push([byId[p.ids[k]].lat, byId[p.ids[k]].lng]);
+    pts.push(pointAt(p, f1));
+    return pts;
+  }
+
+  // ================= Trams =================
+  function curDue(t) { return t.arrivalAt == null ? null : Math.max(0, (t.arrivalAt - Date.now()) / 60000); }
+  function targetIdx(t) {
+    if (!t.r) return -1;
+    if (!toId) return t.r.d;
+    const i = t.r.path.ids.indexOf(toId);
+    return (i > t.r.b && i <= t.r.d) ? i : -1;
+  }
+  const reaches = t => (toId ? targetIdx(t) >= 0 : true);
+
+  function buildTrams() {
+    trams = [];
+    const dirs = Array.isArray(fc.data.directions) ? fc.data.directions : [];
+    dirs.forEach((d, di) => {
+      (Array.isArray(d.trams) ? d.trams : []).slice(0, 3).forEach((t, ti) => {
+        const n = Number(t.due);
+        const isDue = n === 0 || String(t.due).toUpperCase() === "DUE";
+        const due = isDue ? 0 : (isNaN(n) ? null : n);
+        trams.push({
+          key: di + "-" + ti, di, ti,
+          dirName: d.name || "", destination: t.destination || "",
+          rawDue: t.due, due,
+          arrivalAt: due == null ? null : fc.fetchedAt + due * 60000,
+          r: resolveTramPath(fc.boardId, d.name, t.destination)
+        });
+      });
+    });
+  }
+
+  function setSelected(t) {
+    selected = t || null;
+    selKey = t ? { dirName: t.dirName, destination: t.destination, arrivalAt: t.arrivalAt } : null;
+  }
+  function defaultPick() {
+    const usable = trams.filter(t => t.r && t.due != null);
+    if (toId) {
+      const r = usable.filter(reaches).sort((a, b) => a.due - b.due)[0];
+      if (r) return r;
+    }
+    return usable[0] || null;
+  }
+  // Keep following the same tram across refreshes
+  function restoreSelection() {
+    let pick = null;
+    if (selKey) {
+      let best = null, bd = Infinity;
+      trams.forEach(t => {
+        if (t.dirName === selKey.dirName && t.destination === selKey.destination && t.arrivalAt != null && selKey.arrivalAt != null) {
+          const d = Math.abs(t.arrivalAt - selKey.arrivalAt);
+          if (d < bd) { bd = d; best = t; }
+        }
+      });
+      if (best && bd <= 3 * 60000) pick = best;
+      else pick = trams.find(t => t.dirName === selKey.dirName && t.r) || null;
+    }
+    setSelected(pick || defaultPick());
+  }
+
+  function selectTram(key, byUser) {
+    const t = trams.find(x => x.key === key);
+    if (!t) return;
+    setSelected(t);
+    document.querySelectorAll(".tram[data-key]").forEach(n => n.classList.toggle("selected", n.dataset.key === key));
+    renderMap(true);
+    renderTrip();
+    if (byUser && isMobile()) els.mapPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  // ================= Stops + pickers =================
+  async function loadStops() {
+    const data = await getJSON(API + "/stops");
+    if (!data || !Array.isArray(data.stops)) throw new Error("Stop list came back in an unexpected format.");
+    stops = data.stops
+      .filter(s => s && s.id && isFinite(Number(s.lat)) && isFinite(Number(s.lng)))
+      .map(s => ({ id: s.id, name: s.name || s.id, line: String(s.line).toLowerCase(), lat: Number(s.lat), lng: Number(s.lng) }));
+    byId = {};
+    stops.forEach(s => { byId[s.id] = s; });
+    buildPaths();
+
+    els.fromSel.innerHTML = "";
+    [{ line: "red", label: "Red Line" }, { line: "green", label: "Green Line" }].forEach(g => {
+      const og = document.createElement("optgroup");
+      og.label = g.label;
+      stops.filter(s => s.line === g.line).forEach(s => og.appendChild(new Option(s.name, s.id)));
+      if (og.children.length) els.fromSel.appendChild(og);
+    });
+    if (!byId[fromId]) fromId = byId[DEFAULT_STOP] ? DEFAULT_STOP : (stops[0] && stops[0].id);
+    els.fromSel.value = fromId;
+    populateTo();
+  }
+
+  function populateTo() {
+    const from = byId[fromId];
+    els.toSel.innerHTML = "";
+    els.toSel.add(new Option("Anywhere (end of the line)", ""));
+    if (from) {
+      const og = document.createElement("optgroup");
+      og.label = (from.line === "green" ? "Green" : "Red") + " Line";
+      stops.filter(s => s.line === from.line && s.id !== fromId).forEach(s => og.appendChild(new Option(s.name, s.id)));
+      els.toSel.appendChild(og);
+    }
+    if (toId && (!byId[toId] || !from || byId[toId].line !== from.line || toId === fromId)) {
+      toId = "";
+      store(KEY_TO, "");
+    }
+    els.toSel.value = toId;
+  }
+
+  function setFrom(id) {
+    if (!byId[id]) return;
+    fromId = id;
+    store(KEY_FROM, id);
+    els.fromSel.value = id;
+    populateTo();
+    fc = null; trams = []; setSelected(null);
+    els.directions.innerHTML = '<div class="loading">Loading trams…</div>';
+    els.message.innerHTML = "";
+    els.title.innerHTML = "";
+    setAccent(byId[id].line);
+    fitPending = true;
+    renderMap(true);
+    renderTrip();
+    loadForecast();
+    startTimer();
+  }
+
+  function setTo(id) {
+    toId = id || "";
+    store(KEY_TO, toId);
+    els.toSel.value = toId;
+    if (fc) {
+      selKey = null;
+      restoreSelection();
+      renderForecast();
+    }
+    renderMap(true);
+    renderTrip();
+  }
+
+  // ================= Forecast =================
+  async function loadForecast() {
+    if (!fromId) return;
+    const myId = ++reqId;
+    els.refresh.classList.add("spin");
+    try {
+      const data = await getJSON(API + "/forecast?stop=" + encodeURIComponent(fromId));
+      if (myId !== reqId) return;
+      if (!data || typeof data !== "object") throw new Error("Forecast came back in an unexpected format.");
+      const returned = data.stop && byId[data.stop] ? data.stop : fromId;
+      if (data.stop && data.stop !== fromId) {
+        showWarn("Heads up.", "You asked for " + stopName(fromId) + " but the data source sent " + (data.stopName || data.stop) + ". The times and map below are for " + (data.stopName || data.stop) + ".");
+      } else clearWarn();
+      fc = { data, fetchedAt: Date.now(), boardId: returned };
+      buildTrams();
+      restoreSelection();
+      renderForecast();
+      renderMap(fitPending);
+      fitPending = false;
+      renderTrip();
+      clearError();
+      els.updated.textContent = "Last updated " + new Date().toLocaleTimeString("en-IE", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    } catch (e) {
+      if (myId !== reqId) return;
+      showError("Couldn't load live trams.", e.message + " Trying again in 20 seconds.");
+      if (!els.directions.querySelector(".direction")) els.directions.innerHTML = "";
+    } finally {
+      if (myId === reqId) els.refresh.classList.remove("spin");
+    }
+  }
+
+  function renderForecast() {
+    const data = fc.data;
+    const stop = byId[fc.boardId];
+    const line = stop ? stop.line : "red";
+    setAccent(line);
+
+    els.title.innerHTML = "";
+    const h = el("div", "stop-title", data.stopName || (stop && stop.name) || fc.boardId);
+    h.appendChild(el("span", "line-badge", line === "green" ? "Green" : "Red"));
+    els.title.appendChild(h);
+
+    els.message.innerHTML = "";
+    if (data.message) {
+      const m = el("div", "message");
+      m.appendChild(el("strong", null, "Service update"));
+      m.appendChild(el("span", null, data.message));
+      els.message.appendChild(m);
+    }
+
+    els.directions.innerHTML = "";
+    const dirs = Array.isArray(data.directions) ? data.directions : [];
+    if (!dirs.length) {
+      els.directions.appendChild(el("div", "empty", "No direction information available for this stop."));
+      return;
+    }
+    dirs.forEach((d, di) => {
+      const card = el("section", "direction");
+      card.appendChild(el("h2", null, d.name || "Direction"));
+      const list = trams.filter(t => t.di === di);
+      if (!list.length) card.appendChild(el("div", "empty", "No trams scheduled right now."));
+      list.forEach((t, i) => {
+        const row = el("div", "tram" + (i === 0 ? " first" : "") + (selected && selected.key === t.key ? " selected" : ""));
+        row.dataset.key = t.key;
+        row.tabIndex = 0;
+        row.setAttribute("role", "button");
+        row.setAttribute("aria-label", "Show tram to " + t.destination + " on the map");
+
+        const info = el("div", "info");
+        info.appendChild(el("div", "dest", t.destination || "Unknown"));
+        if (toId) {
+          const ok = reaches(t);
+          info.appendChild(el("div", "sub " + (ok ? "ok" : "no"), (ok ? "✓ Stops at " : "✗ Doesn't reach ") + stopName(toId)));
+        } else if (!t.r) {
+          info.appendChild(el("div", "sub", "Route unknown, can't map this one"));
+        }
+        row.appendChild(info);
+
+        const mins = el("div", "mins" + (t.due === 0 ? " due" : ""));
+        if (t.due === 0) mins.appendChild(el("span", "num", "Due"));
+        else {
+          mins.appendChild(el("span", "num", t.due == null ? String(t.rawDue) : String(t.due)));
+          if (t.due != null) mins.appendChild(el("span", "unit", t.due === 1 ? "min" : "mins"));
+        }
+        row.appendChild(mins);
+
+        row.addEventListener("click", () => selectTram(t.key, true));
+        row.addEventListener("keydown", ev => {
+          if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); selectTram(t.key, true); }
+        });
+        card.appendChild(row);
+      });
+      els.directions.appendChild(card);
+    });
+  }
+
+  // ================= Trip card =================
+  function whereText(t, pos) {
+    const p = t.r.path;
+    if (pos.atStart) return "Getting ready at " + stopName(p.ids[0]);
+    const near = Math.round(pos.f);
+    if (Math.abs(pos.f - near) < 0.1) return "At " + stopName(p.ids[near]);
+    return "Between " + stopName(p.ids[Math.floor(pos.f)]) + " and " + stopName(p.ids[Math.ceil(pos.f)]);
+  }
+
+  function renderTrip() {
+    const card = els.trip;
+    card.innerHTML = "";
+    if (!selected) { card.textContent = fc ? "Tap any tram to track it on the map." : "Loading trams…"; return; }
+    const t = selected;
+    if (!t.r || t.due == null) {
+      card.textContent = "This tram to " + t.destination + " can't be placed on the map, its route isn't known.";
+      return;
+    }
+    const p = t.r.path, b = t.r.b;
+    const due = curDue(t);
+    const pos = estimatePos(p, b, due);
+    let ti = targetIdx(t);
+    const missed = toId && ti < 0;
+    if (ti < 0) ti = t.r.d;
+
+    const top = el("div", "top");
+    top.appendChild(el("span", "swatch")).style.background = COLORS[p.line];
+    top.appendChild(el("b", null, "To " + t.destination));
+    top.appendChild(el("span", "muted", t.dirName));
+    card.appendChild(top);
+
+    const r1 = el("div", "row", "📍 " + whereText(t, pos));
+    r1.appendChild(el("span", "est", "est."));
+    card.appendChild(r1);
+
+    const r2 = el("div", "row");
+    r2.append("Arrives at ");
+    r2.appendChild(el("b", "board-name", stopName(fc.boardId)));
+    r2.append(due < 0.5 ? " now" : " in " + Math.round(due) + " min");
+    card.appendChild(r2);
+
+    if (ti > b) {
+      const n = ti - b, m = Math.max(1, Math.round(p.cum[ti] - p.cum[b]));
+      const r3 = el("div", "row");
+      r3.append("Then " + n + (n === 1 ? " stop" : " stops") + ", about " + m + " min, to ");
+      r3.appendChild(el("b", "target-name", stopName(p.ids[ti])));
+      card.appendChild(r3);
+    }
+    if (missed) card.appendChild(el("div", "warn-line", "This tram doesn't reach " + stopName(toId) + ". Showing its route to " + t.destination + " instead."));
+  }
+
+  // ================= Map =================
+  function initMap() {
+    if (typeof L === "undefined") {
+      showMapError("The map couldn't load. Check your connection, the rest of myLUAS still works.");
+      return;
+    }
+    map = L.map("map", { zoomControl: true, attributionControl: true, tap: true }).setView([53.33, -6.27], 12);
+    // Light street map from Esri. Free, no API key, and works when the file is opened from your computer.
+    // If it keeps failing, myLUAS switches to Esri's plain light grey map automatically.
+    const ESRI = "https://server.arcgisonline.com/ArcGIS/rest/services/";
+    const tileSources = [
+      { url: ESRI + "World_Street_Map/MapServer/tile/{z}/{y}/{x}", maxZoom: 19 },
+      { url: ESRI + "Canvas/World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}", maxZoom: 16 }
+    ];
+    const ATTR = 'Tiles &copy; <a href="https://www.esri.com">Esri</a>, HERE, Garmin, &copy; OpenStreetMap contributors';
+    let tileIdx = 0, tileErrors = 0, tileLayer = null;
+    function useTiles(i) {
+      if (tileLayer) map.removeLayer(tileLayer);
+      tileIdx = i; tileErrors = 0;
+      tileLayer = L.tileLayer(tileSources[i].url, { maxZoom: tileSources[i].maxZoom, maxNativeZoom: tileSources[i].maxZoom, attribution: ATTR })
+        .on("tileerror", () => {
+          tileErrors++;
+          if (tileErrors === 6) {
+            if (tileIdx + 1 < tileSources.length) useTiles(tileIdx + 1);
+            else showMapError("The street map couldn't load. Stops, route and trams still show.", true);
+          }
+        })
+        .addTo(map);
+    }
+    useTiles(0);
+
+    map.createPane("routes").style.zIndex = 410;
+    map.createPane("stopsPane").style.zIndex = 420;
+    layers.base = L.layerGroup().addTo(map);
+    layers.route = L.layerGroup().addTo(map);
+    layers.stops = L.layerGroup().addTo(map);
+    layers.labels = L.layerGroup().addTo(map);
+    layers.trams = L.layerGroup().addTo(map);
+    layers.me = L.layerGroup().addTo(map);
+
+    window.addEventListener("resize", () => map.invalidateSize());
+  }
+
+  function drawNetwork() {
+    if (!map) return;
+    layers.base.clearLayers();
+    layers.stops.clearLayers();
+    stopMarkers = {};
+    paths.filter(p => p.dir === "Outbound" || p.line === "green").forEach(p => {
+      L.polyline(coordsBetween(p, 0, p.ids.length - 1), { pane: "routes", color: COLORS[p.line], weight: 4, opacity: .16, interactive: false }).addTo(layers.base);
+    });
+    stops.forEach(s => {
+      const vis = L.circleMarker([s.lat, s.lng], { pane: "stopsPane", radius: 4, interactive: false, color: COLORS[s.line], weight: 1.5, fillColor: "#fff", fillOpacity: .35, opacity: .35 }).addTo(layers.stops);
+      const hit = L.circleMarker([s.lat, s.lng], { pane: "stopsPane", radius: 13, stroke: false, fill: true, fillColor: "#000", fillOpacity: 0 }).addTo(layers.stops);
+      hit.bindTooltip(s.name, { direction: "top", offset: [0, -8], className: "stop-tip" });
+      hit.on("click", () => openStopPopup(s.id));
+      stopMarkers[s.id] = { vis, hit };
+    });
+  }
+
+  function stopStyle(kind, s) {
+    const line = COLORS[s.line];
+    switch (kind) {
+      case "target": return { radius: 9, color: "#fff", weight: 3, fillColor: COLORS.target, fillOpacity: 1, opacity: 1 };
+      case "board": return { radius: 8, color: "#0b1020", weight: 3, fillColor: COLORS.board, fillOpacity: 1, opacity: 1 };
+      case "active": return { radius: 5.5, color: line, weight: 2.5, fillColor: "#fff", fillOpacity: 1, opacity: 1 };
+      case "faded": return { radius: 4, color: line, weight: 1.5, fillColor: "#fff", fillOpacity: .35, opacity: .35 };
+      default: return { radius: 3, color: line, weight: 1, fillColor: "#fff", fillOpacity: .15, opacity: .12 };
+    }
+  }
+
+  function addLabel(id, kind) {
+    const s = byId[id];
+    if (!s) return;
+    const prefix = kind === "board" ? "From " : "To ";
+    L.marker([s.lat, s.lng], {
+      icon: L.divIcon({ className: "lbl-wrap", html: '<div class="stop-label ' + kind + '"><em>' + prefix + "</em>" + esc(s.name) + "</div>", iconSize: null, iconAnchor: [-14, 11] }),
+      interactive: false, keyboard: false, zIndexOffset: 200
+    }).addTo(layers.labels);
+  }
+
+  function renderMap(fit) {
+    if (!map || !stops.length) return;
+    layers.route.clearLayers();
+    layers.labels.clearLayers();
+    approachLine = null;
+
+    const board = fc ? fc.boardId : fromId;
+    const boardStop = byId[board];
+    if (!boardStop) return;
+    const t = selected && selected.r && selected.due != null ? selected : null;
+    let kindOf, focus = [], targetId = null;
+
+    if (t) {
+      const p = t.r.path, b = t.r.b, end = p.ids.length - 1;
+      let ti = targetIdx(t);
+      if (ti < 0) ti = t.r.d;
+      targetId = p.ids[ti];
+      const col = COLORS[p.line];
+      const pos = estimatePos(p, b, curDue(t));
+
+      // Full route, faded
+      L.polyline(coordsBetween(p, 0, end), { pane: "routes", color: col, weight: 5, opacity: .3, interactive: false }).addTo(layers.route);
+      // Tram to boarding stop, dotted
+      approachLine = L.polyline(pos.f < b ? coordsBetween(p, pos.f, b) : [], { pane: "routes", color: col, weight: 5, opacity: .95, dashArray: "1 10", lineCap: "round", interactive: false }).addTo(layers.route);
+      approachLine._luas = { p, b, t };
+      // Boarding stop to your stop, bright
+      if (ti > b) {
+        const jc = coordsBetween(p, b, ti);
+        L.polyline(jc, { pane: "routes", color: "#0b1020", weight: 12, opacity: .55, lineCap: "round", interactive: false }).addTo(layers.route);
+        L.polyline(jc, { pane: "routes", color: col, weight: 8, opacity: 1, lineCap: "round", interactive: false }).addTo(layers.route);
+      }
+
+      const idx = {};
+      p.ids.forEach((id, i) => { idx[id] = i; });
+      kindOf = s => {
+        if (s.id === targetId) return "target";
+        if (s.id === board) return "board";
+        const i = idx[s.id];
+        if (i === undefined) return "off";
+        return (i > b && i < ti) ? "active" : "faded";
+      };
+      focus = [pointAt(p, pos.f), [boardStop.lat, boardStop.lng], [byId[targetId].lat, byId[targetId].lng]];
+    } else {
+      // No tram picked yet, show the whole line of your boarding stop
+      paths.filter(p => p.line === boardStop.line && (p.dir === "Outbound" || p.line === "green")).forEach(p => {
+        L.polyline(coordsBetween(p, 0, p.ids.length - 1), { pane: "routes", color: COLORS[p.line], weight: 5, opacity: .6, interactive: false }).addTo(layers.route);
+      });
+      targetId = toId || null;
+      kindOf = s => {
+        if (targetId && s.id === targetId) return "target";
+        if (s.id === board) return "board";
+        return s.line === boardStop.line ? "active" : "off";
+      };
+      focus = stops.filter(s => s.line === boardStop.line).map(s => [s.lat, s.lng]);
+    }
+
+    stops.forEach(s => {
+      const m = stopMarkers[s.id];
+      if (m) m.vis.setStyle(stopStyle(kindOf(s), s));
+    });
+    if (stopMarkers[board]) stopMarkers[board].vis.bringToFront();
+    if (targetId && stopMarkers[targetId]) {
+      stopMarkers[targetId].vis.bringToFront();
+      const ts = byId[targetId];
+      L.marker([ts.lat, ts.lng], {
+        icon: L.divIcon({ className: "", html: '<div class="pulse-ring"></div>', iconSize: [44, 44], iconAnchor: [22, 22] }),
+        interactive: false, keyboard: false, zIndexOffset: -1000
+      }).addTo(layers.labels);
+      addLabel(targetId, "target");
+    }
+    addLabel(board, "board");
+
+    renderTramMarkers(true);
+    if (focus.length) lastFocus = L.latLngBounds(focus);
+    if (fit) fitFocus();
+  }
+
+  function fitFocus() {
+    if (!map || !lastFocus) return;
+    map.fitBounds(lastFocus, { padding: [60, 60], maxZoom: 15 });
+  }
+
+  function tramHtml(t, due, isSel) {
+    const mins = due < 0.5 ? "Due" : Math.round(due) + "m";
+    return '<div class="tram-pin ' + (isSel ? "sel" : (selected ? "dim" : "")) + '" style="--c:' + COLORS[t.r.path.line] + '">' + TRAM_SVG + '<span class="tag">' + mins + "</span></div>";
+  }
+
+  function renderTramMarkers(rebuild) {
+    if (!map) return;
+    if (rebuild) { layers.trams.clearLayers(); tramMarkers = {}; }
+    trams.forEach(t => {
+      if (!t.r || t.due == null) return;
+      const due = curDue(t);
+      const ll = pointAt(t.r.path, estimatePos(t.r.path, t.r.b, due).f);
+      const isSel = !!(selected && selected.key === t.key);
+      const html = tramHtml(t, due, isSel);
+      const tip = esc(t.destination) + ", " + esc(t.dirName) + ", " + (due < 0.5 ? "due now" : Math.round(due) + " min");
+      let rec = tramMarkers[t.key];
+      if (!rec) {
+        const m = L.marker(ll, {
+          icon: L.divIcon({ className: "tram-icon", html, iconSize: [32, 32], iconAnchor: [16, 16] }),
+          zIndexOffset: isSel ? 1000 : 500, keyboard: true, title: "Tram to " + t.destination
+        });
+        m.bindTooltip(tip, { direction: "top", offset: [0, -18], className: "stop-tip" });
+        m.on("click", () => selectTram(t.key, false));
+        m.addTo(layers.trams);
+        tramMarkers[t.key] = { m, html };
+      } else {
+        rec.m.setLatLng(ll);
+        rec.m.setTooltipContent(tip);
+        if (rec.html !== html) {
+          rec.m.setIcon(L.divIcon({ className: "tram-icon", html, iconSize: [32, 32], iconAnchor: [16, 16] }));
+          rec.m.setZIndexOffset(isSel ? 1000 : 500);
+          rec.html = html;
+        }
+      }
+    });
+  }
+
+  // Trams glide between refreshes
+  function tick() {
+    if (!fc) return;
+    renderTramMarkers(false);
+    if (approachLine && approachLine._luas) {
+      const { p, b, t } = approachLine._luas;
+      const pos = estimatePos(p, b, curDue(t));
+      approachLine.setLatLngs(pos.f < b ? coordsBetween(p, pos.f, b) : []);
+    }
+    if (selected) renderTrip();
+  }
+
+  // ================= Stop popups =================
+  function openStopPopup(id, note) {
+    const s = byId[id];
+    if (!s || !map) return;
+    const w = el("div", "pop");
+    const h = el("div", "pop-title", s.name);
+    h.appendChild(el("span", "pop-badge " + s.line, s.line === "green" ? "Green" : "Red"));
+    w.appendChild(h);
+    w.appendChild(el("div", "pop-sub", "Stop " + s.id + (id === fromId ? " · Your boarding stop" : id === toId ? " · Your destination" : "")));
+    if (note) w.appendChild(el("div", "pop-note", note));
+    const live = el("div", "pop-live", "Loading next trams…");
+    w.appendChild(live);
+
+    const actions = el("div", "pop-actions");
+    const bBtn = el("button", "pop-btn board", id === fromId ? "Boarding here" : "Board here");
+    bBtn.disabled = id === fromId;
+    bBtn.addEventListener("click", () => { map.closePopup(); setFrom(id); });
+
+    const from = byId[fromId];
+    const sameLine = from && from.line === s.line && id !== fromId;
+    let tLabel = "Go here";
+    if (id === toId) tLabel = "Clear stop";
+    else if (id === fromId) tLabel = "Go here";
+    else if (!sameLine) tLabel = "Other line";
+    const tBtn = el("button", "pop-btn target", tLabel);
+    if (id === toId) tBtn.addEventListener("click", () => { map.closePopup(); setTo(""); });
+    else if (!sameLine) { tBtn.disabled = true; tBtn.title = id === fromId ? "This is your boarding stop" : "This stop is on a different line from where you board"; }
+    else tBtn.addEventListener("click", () => { map.closePopup(); setTo(id); });
+    actions.append(bBtn, tBtn);
+    w.appendChild(actions);
+
+    const popup = L.popup({ className: "luas-pop", maxWidth: 290, minWidth: 230, autoPanPadding: [30, 30] })
+      .setLatLng([s.lat, s.lng]).setContent(w).openOn(map);
+    loadPopupLive(id, live, popup);
+  }
+
+  async function loadPopupLive(id, box, popup) {
+    try {
+      let data;
+      const c = popCache[id];
+      if (fc && id === fc.boardId) data = fc.data;
+      else if (c && Date.now() - c.t < REFRESH_MS) data = c.data;
+      else {
+        data = await getJSON(API + "/forecast?stop=" + encodeURIComponent(id));
+        popCache[id] = { t: Date.now(), data };
+      }
+      box.innerHTML = "";
+      if (data.stop && data.stop !== id) box.appendChild(el("div", "pop-note", "The data source sent " + (data.stopName || data.stop) + " for this stop."));
+      if (data.message) box.appendChild(el("div", "pop-msg", data.message));
+      const dirs = Array.isArray(data.directions) ? data.directions : [];
+      if (!dirs.length) box.appendChild(el("div", null, "No live times right now."));
+      dirs.forEach(d => {
+        const g = el("div", "pop-dir");
+        g.appendChild(el("div", "pop-dir-name", d.name || "Direction"));
+        const ts = (Array.isArray(d.trams) ? d.trams : []).slice(0, 2);
+        if (!ts.length) g.appendChild(el("div", "pop-row", "No trams scheduled"));
+        ts.forEach(t => {
+          const r = el("div", "pop-row");
+          r.appendChild(el("span", null, t.destination));
+          const n = Number(t.due);
+          r.appendChild(el("b", null, n === 0 ? "Due" : isNaN(n) ? String(t.due) : n + " min"));
+          g.appendChild(r);
+        });
+        box.appendChild(g);
+      });
+    } catch (e) {
+      box.innerHTML = "";
+      box.appendChild(el("div", "pop-err", "Couldn't load live times. " + e.message));
+    }
+    if (popup && popup.isOpen()) popup.update();
+  }
+
+  // ================= Near me =================
+  function locate() {
+    if (!map) return;
+    if (!navigator.geolocation) { showMapError("Your browser doesn't share location.", true); return; }
+    els.locBtn.textContent = "Locating…";
+    navigator.geolocation.getCurrentPosition(pos => {
+      els.locBtn.textContent = "Near me";
+      const me = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+      layers.me.clearLayers();
+      L.circleMarker([me.lat, me.lng], { radius: 8, color: "#fff", weight: 3, fillColor: "#2f80ff", fillOpacity: 1 })
+        .bindTooltip("You", { direction: "top", className: "stop-tip" }).addTo(layers.me);
+      let best = null, bd = Infinity;
+      stops.forEach(s => { const d = hav(me, s); if (d < bd) { bd = d; best = s; } });
+      if (!best) return;
+      map.fitBounds(L.latLngBounds([[me.lat, me.lng], [best.lat, best.lng]]), { padding: [80, 80], maxZoom: 16 });
+      const dist = bd < 1 ? Math.round(bd * 1000) + " m" : bd.toFixed(1) + " km";
+      setTimeout(() => openStopPopup(best.id, "Your nearest stop, " + dist + " away"), 350);
+    }, err => {
+      els.locBtn.textContent = "Near me";
+      showMapError("Couldn't get your location. " + err.message, true);
+    }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 });
+  }
+
+  // ================= Timers + events =================
+  function startTimer() {
+    clearInterval(timer);
+    timer = setInterval(loadForecast, REFRESH_MS);
+  }
+
+  els.fromSel.addEventListener("change", () => setFrom(els.fromSel.value));
+  els.toSel.addEventListener("change", () => setTo(els.toSel.value));
+  els.refresh.addEventListener("click", () => { loadForecast(); startTimer(); });
+  els.fitBtn.addEventListener("click", fitFocus);
+  els.locBtn.addEventListener("click", locate);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") { loadForecast(); startTimer(); }
+  });
+  window.addEventListener("error", ev => showError("Something went wrong.", ev.message || "Unknown error."));
+  window.addEventListener("unhandledrejection", ev => showError("Something went wrong.", (ev.reason && ev.reason.message) || String(ev.reason)));
+
+  // ================= Start =================
+  async function init() {
+    fromId = load(KEY_FROM, DEFAULT_STOP);
+    toId = load(KEY_TO, "");
+    try { initMap(); } catch (e) { showMapError("The map couldn't start. " + e.message); map = null; }
+    try {
+      await loadStops();
+      setAccent(byId[fromId] ? byId[fromId].line : "red");
+      try { drawNetwork(); renderMap(true); } catch (e) { showMapError("The map couldn't draw the network. " + e.message); }
+    } catch (e) {
+      showError("Couldn't load the stop list.", e.message + " Showing your saved stop for now.");
+      els.fromSel.innerHTML = "";
+      els.fromSel.appendChild(new Option(fromId, fromId));
+    }
+    await loadForecast();
+    startTimer();
+    setInterval(tick, TICK_MS);
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
