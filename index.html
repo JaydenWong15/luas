@@ -9,9 +9,9 @@
 <style>
   :root {
     --bg: #0b1020;
-    --card: #141b30;
-    --card-2: #1b2440;
-    --card-3: #232e52;
+    --card: rgba(20, 27, 48, .82);
+    --card-2: rgba(27, 36, 64, .88);
+    --card-3: rgba(35, 46, 82, .92);
     --text: #f2f4fa;
     --muted: #9aa3bd;
     --red: #e4002b;
@@ -29,6 +29,28 @@
     --radius: 18px;
   }
   * { box-sizing: border-box; }
+
+  /* ---------- Background photo ----------
+     Put a photo called luas-night.jpg in the same folder as this file.
+     If it's missing, the page just keeps its plain dark background. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    background: url("luas-night.jpg") center / cover no-repeat;
+    opacity: .35;              /* how faded the photo is, 0 = invisible, 1 = full strength */
+    filter: blur(2px) saturate(.9);
+    transform: scale(1.03);    /* hides blurred edges */
+  }
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    /* dark wash so text stays readable over the photo */
+    background: linear-gradient(180deg, rgba(11,16,32,.55) 0%, rgba(11,16,32,.75) 60%, rgba(11,16,32,.9) 100%);
+  }
   html { overflow-x: hidden; }
   html, body { margin: 0; padding: 0; }
   body {
@@ -161,6 +183,10 @@
 
   /* ---------- Directions + trams ---------- */
   .direction { background: var(--card); border-radius: var(--radius); padding: 16px; margin-bottom: 14px; }
+  .direction, .message, .trip, select, button.refresh, .map-tools button {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+  }
   .direction h2 { margin: 0 0 10px; font-size: .85rem; text-transform: uppercase; letter-spacing: 1.2px; color: var(--muted); }
   .tram {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
